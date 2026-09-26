@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'them_giao_dich.dart';
 
 void main() {
   runApp(const ExpenseManagerApp());
@@ -61,6 +62,12 @@ class WelcomeScreen extends StatelessWidget {
                 height: 52,
                 child: ElevatedButton(
                   onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const AddTransactionScreen(),
+                        ),
+                      );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1E5FCC),
