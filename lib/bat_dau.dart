@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'them_giao_dich.dart';
+import 'trang_chu.dart';
 
 void main() {
   runApp(const ExpenseManagerApp());
@@ -11,11 +11,13 @@ class ExpenseManagerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Expense Manager',
       debugShowCheckedModeBanner: false,
+      title: 'Quản lý thu chi',
       theme: ThemeData(
-        fontFamily: 'Roboto',
-        scaffoldBackgroundColor: Colors.white,
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF1769E0),
+        ),
       ),
       home: const WelcomeScreen(),
     );
@@ -56,18 +58,18 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
               const Spacer(flex: 4),
-
+              // Nút "Bắt đầu" ở dưới cùng
               SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
                   onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const AddTransactionScreen(),
-                        ),
-                      );
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const HomePage(),
+                      ),
+                    );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1E5FCC),
@@ -109,5 +111,3 @@ class WalletIcon extends StatelessWidget {
     );
   }
 }
-
-
