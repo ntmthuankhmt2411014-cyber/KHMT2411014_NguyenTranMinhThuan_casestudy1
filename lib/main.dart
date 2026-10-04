@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'trang_chu.dart';
+import 'screens/dashboard.dart';
 
 void main() {
   runApp(const ExpenseManagerApp());

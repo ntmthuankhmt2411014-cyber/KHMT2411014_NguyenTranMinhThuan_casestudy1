@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'trang_giao_dich.dart';
+import '../models/transaction_form.dart';
 
 /// Màn hình Thêm giao dịch -> các field để trống
 class AddTransactionScreen extends StatelessWidget {

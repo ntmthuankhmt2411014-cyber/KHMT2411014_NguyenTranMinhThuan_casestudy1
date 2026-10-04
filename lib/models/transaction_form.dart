@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../database/database_helper.dart';
 
 enum TransactionType { expense, income }
 
@@ -13,6 +14,8 @@ const List<Category> categories = [
   Category('Di chuyển', Icons.directions_car),
   Category('Mua sắm', Icons.shopping_bag),
   Category('Hóa đơn', Icons.receipt_long),
+  Category('Giáo dục', Icons.school),
+  Category('Thu nhập', Icons.attach_money),
   Category('Khác', Icons.category),
 ];
 
@@ -21,6 +24,8 @@ const List<Category> categories = [
 /// Nếu truyền sẵn initialAmount/initialDate/initialNote -> hiển thị như màn hình Sửa.
 class TransactionFormScreen extends StatefulWidget {
   final String title;
+  // Null -> đang Thêm mới (sẽ insert). Có giá trị -> đang Sửa (sẽ update đúng id này).
+  final int? transactionId;
   final TransactionType initialType;
   final Category? initialCategory;
   final String? initialAmount;
@@ -30,6 +35,7 @@ class TransactionFormScreen extends StatefulWidget {
   const TransactionFormScreen({
     super.key,
     required this.title,
+    this.transactionId,
     this.initialType = TransactionType.expense,
     this.initialCategory,
     this.initialAmount,
@@ -265,20 +271,52 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       width: double.infinity,
       height: 52,
       child: ElevatedButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => TransactionFormScreen(
-                title: 'Sửa giao dịch',
-                initialType: _type,
-                initialCategory: _category,
-                initialAmount: _amountController.text,
-                initialDate: _dateController.text,
-                initialNote: _noteController.text,
-              ),
-            ),
-          );
+        onPressed: () async {
+          // Chỉ giữ lại chữ số trong ô "Số tiền" (bỏ dấu chấm phân cách nghìn)
+          final cleanedAmount =
+          _amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
+
+          if (cleanedAmount.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Vui lòng nhập số tiền')),
+            );
+            return;
+          }
+          if (_dateController.text.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Vui lòng chọn ngày giao dịch')),
+            );
+            return;
+          }
+
+          // Quy ước: Chi tiêu lưu số âm, Thu nhập lưu số dương
+          double amountValue = double.parse(cleanedAmount);
+          if (_type == TransactionType.expense) {
+            amountValue = -amountValue;
+          }
+
+          final noteText = _noteController.text.trim();
+
+          final data = {
+            // Bảng của giảng viên chỉ có "title", nên dùng ghi chú làm title;
+            // nếu bỏ trống ghi chú thì lấy tạm tên danh mục.
+            'title': noteText.isEmpty ? _category.name : noteText,
+            'amount': amountValue,
+            'date': _dateController.text,
+            'category': _category.name,
+          };
+
+          if (widget.transactionId == null) {
+            await DatabaseHelper.instance.insertTransaction(data);
+          } else {
+            await DatabaseHelper.instance
+                .updateTransaction(widget.transactionId!, data);
+          }
+
+          if (context.mounted) {
+            // Trả về true để màn Trang chủ biết cần load lại danh sách
+            Navigator.pop(context, true);
+          }
         },
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF1E5FCC),

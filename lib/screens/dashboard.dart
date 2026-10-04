@@ -1,6 +1,60 @@
 import 'package:flutter/material.dart';
-import 'trang_giao_dich.dart';
-import 'them_giao_dich.dart';
+import '../database/database_helper.dart';
+import '../models/transaction_form.dart';
+import 'add_transaction_screen.dart';
+
+/// Định dạng số có dấu chấm ngăn cách hàng nghìn, kiểu Việt Nam.
+/// Ví dụ: 8000000 -> "8.000.000"
+String formatNumber(num value) {
+  final absValue = value.abs().toInt();
+  final str = absValue.toString();
+  final buffer = StringBuffer();
+  for (int i = 0; i < str.length; i++) {
+    if (i != 0 && (str.length - i) % 3 == 0) buffer.write('.');
+    buffer.write(str[i]);
+  }
+  return buffer.toString();
+}
+
+/// Map tên danh mục (lưu dạng text trong database) sang icon hiển thị
+IconData iconForCategory(String category) {
+  switch (category) {
+    case 'Ăn uống':
+      return Icons.restaurant;
+    case 'Di chuyển':
+      return Icons.directions_car;
+    case 'Mua sắm':
+      return Icons.shopping_cart;
+    case 'Hóa đơn':
+      return Icons.receipt_long;
+    case 'Giáo dục':
+      return Icons.school;
+    case 'Thu nhập':
+      return Icons.attach_money;
+    default:
+      return Icons.category;
+  }
+}
+
+/// Map tên danh mục sang màu hiển thị
+Color colorForCategory(String category) {
+  switch (category) {
+    case 'Ăn uống':
+      return const Color(0xFFFF6D00);
+    case 'Di chuyển':
+      return const Color(0xFF2196F3);
+    case 'Mua sắm':
+      return const Color(0xFF9C27B0);
+    case 'Hóa đơn':
+      return const Color(0xFF795548);
+    case 'Giáo dục':
+      return const Color(0xFF009688);
+    case 'Thu nhập':
+      return const Color(0xFF2EAD4B);
+    default:
+      return Colors.grey;
+  }
+}
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -12,27 +66,36 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int currentIndex = 0;
 
-  final List<Widget> pages = const [
-    HomeContent(),
-    Center(child: Text('Giao dịch', style: TextStyle(fontSize: 24))),
-    Center(child: Text('Thống kê', style: TextStyle(fontSize: 24))),
-  ];
+  // GlobalKey để HomePage có thể gọi hàm reloadTransactions() của HomeContent
+  // từ bên ngoài, sau khi màn Thêm giao dịch đóng lại.
+  final GlobalKey<HomeContentState> _homeContentKey =
+  GlobalKey<HomeContentState>();
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> pages = [
+      HomeContent(key: _homeContentKey),
+      const Center(child: Text('Giao dịch', style: TextStyle(fontSize: 24))),
+      const Center(child: Text('Thống kê', style: TextStyle(fontSize: 24))),
+    ];
+
     return Scaffold(
       body: SafeArea(child: pages[currentIndex]),
       floatingActionButton: currentIndex == 0
           ? FloatingActionButton(
         backgroundColor: const Color(0xFF1769E0),
         foregroundColor: Colors.white,
-        onPressed: () {
-          Navigator.push(
+        onPressed: () async {
+          final result = await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => const AddTransactionScreen(),
             ),
           );
+          // Nếu vừa lưu giao dịch mới thành công -> load lại danh sách
+          if (result == true) {
+            _homeContentKey.currentState?.reloadTransactions();
+          }
         },
         child: const Icon(Icons.add, size: 36),
       )
@@ -69,31 +132,72 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class HomeContent extends StatelessWidget {
+/// Giờ đây HomeContent là StatefulWidget để tự load dữ liệu từ SQLite
+/// và có thể load lại (reload) sau khi thêm/sửa giao dịch.
+class HomeContent extends StatefulWidget {
   const HomeContent({super.key});
 
   @override
+  State<HomeContent> createState() => HomeContentState();
+}
+
+class HomeContentState extends State<HomeContent> {
+  List<Map<String, dynamic>> _transactions = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    reloadTransactions();
+  }
+
+  Future<void> reloadTransactions() async {
+    final data = await DatabaseHelper.instance.getTransactions();
+    if (!mounted) return;
+    setState(() {
+      _transactions = data;
+      _loading = false;
+    });
+  }
+
+  double get _totalIncome => _transactions
+      .where((t) => (t['amount'] as num) > 0)
+      .fold(0.0, (sum, t) => sum + (t['amount'] as num));
+
+  double get _totalExpense => _transactions
+      .where((t) => (t['amount'] as num) < 0)
+      .fold(0.0, (sum, t) => sum + (t['amount'] as num).abs());
+
+  double get _balance => _totalIncome - _totalExpense;
+
+  @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 100),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Header(),
-              const SizedBox(height: 20),
-              const BalanceCard(),
-              const SizedBox(height: 24),
-              const SummarySection(),
-              const SizedBox(height: 32),
-              const TransactionHeader(),
-              const SizedBox(height: 12),
-              const TransactionList(),
-            ],
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 100),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Header(),
+          const SizedBox(height: 20),
+          BalanceCard(balance: _balance),
+          const SizedBox(height: 24),
+          SummarySection(
+            totalIncome: _totalIncome,
+            totalExpense: _totalExpense,
           ),
-        ),
-      ],
+          const SizedBox(height: 32),
+          const TransactionHeader(),
+          const SizedBox(height: 12),
+          TransactionList(
+            transactions: _transactions,
+            onChanged: reloadTransactions,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -155,7 +259,9 @@ class Header extends StatelessWidget {
 }
 
 class BalanceCard extends StatelessWidget {
-  const BalanceCard({super.key});
+  final double balance;
+
+  const BalanceCard({super.key, required this.balance});
 
   @override
   Widget build(BuildContext context) {
@@ -195,9 +301,9 @@ class BalanceCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 22),
-                const Text(
-                  '5.000.000 đ',
-                  style: TextStyle(
+                Text(
+                  '${balance < 0 ? '-' : ''}${formatNumber(balance)} đ',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 44,
                     fontWeight: FontWeight.bold,
@@ -261,29 +367,36 @@ class BalanceCard extends StatelessWidget {
 }
 
 class SummarySection extends StatelessWidget {
-  const SummarySection({super.key});
+  final double totalIncome;
+  final double totalExpense;
+
+  const SummarySection({
+    super.key,
+    required this.totalIncome,
+    required this.totalExpense,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: const [
+      children: [
         Expanded(
           child: SummaryCard(
             title: 'TỔNG THU NHẬP',
-            amount: '8.000.000 đ',
+            amount: '${formatNumber(totalIncome)} đ',
             icon: Icons.arrow_downward,
-            iconColor: Color(0xFF2EAD4B),
-            backgroundColor: Color(0xFFEAF8EB),
+            iconColor: const Color(0xFF2EAD4B),
+            backgroundColor: const Color(0xFFEAF8EB),
           ),
         ),
-        SizedBox(width: 20),
+        const SizedBox(width: 20),
         Expanded(
           child: SummaryCard(
             title: 'TỔNG CHI TIÊU',
-            amount: '3.000.000 đ',
+            amount: '${formatNumber(totalExpense)} đ',
             icon: Icons.arrow_upward,
-            iconColor: Color(0xFFE53935),
-            backgroundColor: Color(0xFFFFEFF0),
+            iconColor: const Color(0xFFE53935),
+            backgroundColor: const Color(0xFFFFEFF0),
           ),
         ),
       ],
@@ -378,54 +491,36 @@ class TransactionHeader extends StatelessWidget {
   }
 }
 
+/// Giờ nhận danh sách giao dịch thật (lấy từ SQLite) thay vì dữ liệu mẫu cố định
 class TransactionList extends StatelessWidget {
-  const TransactionList({super.key});
+  final List<Map<String, dynamic>> transactions;
+  final VoidCallback onChanged;
 
-  static const List<TransactionData> transactions = [
-    TransactionData(
-      title: 'Ăn trưa',
-      category: 'Ăn uống',
-      date: '03/09/2024',
-      amount: '-50.000 đ',
-      icon: Icons.restaurant,
-      color: Color(0xFFFF6D00),
-    ),
-    TransactionData(
-      title: 'Xăng xe',
-      category: 'Di chuyển',
-      date: '03/09/2024',
-      amount: '-100.000 đ',
-      icon: Icons.directions_car,
-      color: Color(0xFF2196F3),
-    ),
-    TransactionData(
-      title: 'Lương tháng 9',
-      category: 'Thu nhập',
-      date: '01/09/2024',
-      amount: '+8.000.000 đ',
-      icon: Icons.attach_money,
-      color: Color(0xFF2EAD4B),
-    ),
-    TransactionData(
-      title: 'Mua sắm',
-      category: 'Mua sắm',
-      date: '31/08/2024',
-      amount: '-300.000 đ',
-      icon: Icons.shopping_cart,
-      color: Color(0xFF9C27B0),
-    ),
-    TransactionData(
-      title: 'Học phí',
-      category: 'Giáo dục',
-      date: '30/08/2024',
-      amount: '-500.000 đ',
-      icon: Icons.school,
-      color: Color(0xFF009688),
-    ),
-  ];
+  const TransactionList({
+    super.key,
+    required this.transactions,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
+    if (transactions.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        child: const Text(
+          'Chưa có giao dịch nào, bấm nút + để thêm',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Color(0xFF667085)),
+        ),
+      );
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -446,6 +541,7 @@ class TransactionList extends StatelessWidget {
         itemBuilder: (context, index) {
           return TransactionItem(
             transaction: transactions[index],
+            onChanged: onChanged,
           );
         },
       ),
@@ -454,41 +550,47 @@ class TransactionList extends StatelessWidget {
 }
 
 class TransactionItem extends StatelessWidget {
-  final TransactionData transaction;
+  final Map<String, dynamic> transaction;
+  final VoidCallback onChanged;
 
   const TransactionItem({
     super.key,
     required this.transaction,
+    required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () {
-        // "amount" đang có dạng "-50.000 đ" hoặc "+8.000.000 đ"
-        // -> tách dấu +/- để biết là Thu nhập hay Chi tiêu,
-        // rồi bỏ hết ký tự không phải số để lấy phần số tiền thuần.
-        final bool isIncome = transaction.amount.trim().startsWith('+');
-        final String amountOnly =
-        transaction.amount.replaceAll(RegExp(r'[^0-9.]'), '');
+    final double amount = (transaction['amount'] as num).toDouble();
+    final bool isIncome = amount >= 0;
+    final String categoryName = transaction['category'] as String;
+    final String title = transaction['title'] as String;
+    final String date = transaction['date'] as String;
 
-        Navigator.push(
+    return InkWell(
+      onTap: () async {
+        final result = await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => TransactionFormScreen(
               title: 'Sửa giao dịch',
+              transactionId: transaction['id'] as int,
               initialType:
               isIncome ? TransactionType.income : TransactionType.expense,
               initialCategory: categories.firstWhere(
-                    (c) => c.name == transaction.category,
+                    (c) => c.name == categoryName,
                 orElse: () => categories.first,
               ),
-              initialAmount: amountOnly,
-              initialDate: transaction.date,
-              initialNote: transaction.title,
+              initialAmount: formatNumber(amount),
+              initialDate: date,
+              initialNote: title,
             ),
           ),
         );
+        // Nếu vừa sửa xong -> báo cho danh sách load lại dữ liệu mới nhất
+        if (result == true) {
+          onChanged();
+        }
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -499,9 +601,9 @@ class TransactionItem extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 28,
-              backgroundColor: transaction.color,
+              backgroundColor: colorForCategory(categoryName),
               child: Icon(
-                transaction.icon,
+                iconForCategory(categoryName),
                 color: Colors.white,
                 size: 28,
               ),
@@ -512,7 +614,7 @@ class TransactionItem extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    transaction.title,
+                    title,
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -523,7 +625,7 @@ class TransactionItem extends StatelessWidget {
                     children: [
                       Flexible(
                         child: Text(
-                          transaction.category,
+                          categoryName,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 15,
@@ -533,7 +635,7 @@ class TransactionItem extends StatelessWidget {
                       ),
                       const SizedBox(width: 12),
                       Text(
-                        transaction.date,
+                        date,
                         style: const TextStyle(
                           fontSize: 14,
                           color: Color(0xFF667085),
@@ -546,11 +648,11 @@ class TransactionItem extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Text(
-              transaction.amount,
+              '${isIncome ? '+' : '-'}${formatNumber(amount)} đ',
               style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.bold,
-                color: transaction.amount.startsWith('+')
+                color: isIncome
                     ? const Color(0xFF2EAD4B)
                     : const Color(0xFFE53935),
               ),
@@ -560,22 +662,4 @@ class TransactionItem extends StatelessWidget {
       ),
     );
   }
-}
-
-class TransactionData {
-  final String title;
-  final String category;
-  final String date;
-  final String amount;
-  final IconData icon;
-  final Color color;
-
-  const TransactionData({
-    required this.title,
-    required this.category,
-    required this.date,
-    required this.amount,
-    required this.icon,
-    required this.color,
-  });
 }
