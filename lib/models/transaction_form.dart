@@ -19,6 +19,13 @@ const List<Category> categories = [
   Category('Khác', Icons.category),
 ];
 
+/// Danh mục cố định dùng cho mọi khoản Thu nhập (người dùng không chọn)
+const Category incomeCategory = Category('Thu nhập', Icons.attach_money);
+
+/// Danh mục dành cho Chi tiêu: bỏ "Thu nhập" ra khỏi danh sách
+final List<Category> expenseCategories =
+categories.where((c) => c.name != incomeCategory.name).toList();
+
 /// Widget dùng chung cho cả "Thêm giao dịch" và "Sửa giao dịch".
 /// Nếu không truyền các giá trị initial* -> hiển thị như màn hình Thêm (rỗng).
 /// Nếu truyền sẵn initialAmount/initialDate/initialNote -> hiển thị như màn hình Sửa.
@@ -58,7 +65,12 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   void initState() {
     super.initState();
     _type = widget.initialType;
-    _category = widget.initialCategory ?? categories.first;
+    // Danh mục chỉ áp dụng cho Chi tiêu; nếu danh mục truyền vào không hợp lệ
+    // (ví dụ "Thu nhập") thì lấy danh mục đầu tiên của Chi tiêu.
+    final initial = widget.initialCategory;
+    _category = (initial != null && expenseCategories.contains(initial))
+        ? initial
+        : expenseCategories.first;
     _amountController =
         TextEditingController(text: widget.initialAmount ?? '');
     _dateController = TextEditingController(text: widget.initialDate ?? '');
@@ -113,9 +125,12 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
           children: [
             _buildTypeToggle(),
             const SizedBox(height: 24),
-            _buildLabel('Danh mục'),
-            _buildCategoryDropdown(),
-            const SizedBox(height: 20),
+            // Chỉ Chi tiêu mới có danh mục; Thu nhập thì ẩn đi
+            if (_type == TransactionType.expense) ...[
+              _buildLabel('Danh mục'),
+              _buildCategoryDropdown(),
+              const SizedBox(height: 20),
+            ],
             _buildLabel('Số tiền'),
             _buildAmountField(),
             const SizedBox(height: 20),
@@ -187,7 +202,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
           value: _category,
           isExpanded: true,
           icon: const Icon(Icons.keyboard_arrow_down),
-          items: categories.map((cat) {
+          items: expenseCategories.map((cat) {
             return DropdownMenuItem(
               value: cat,
               child: Row(
@@ -297,13 +312,18 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
 
           final noteText = _noteController.text.trim();
 
+          // Thu nhập luôn dùng danh mục "Thu nhập"; Chi tiêu dùng danh mục đã chọn
+          final String categoryName = _type == TransactionType.income
+              ? incomeCategory.name
+              : _category.name;
+
           final data = {
             // Bảng của giảng viên chỉ có "title", nên dùng ghi chú làm title;
             // nếu bỏ trống ghi chú thì lấy tạm tên danh mục.
-            'title': noteText.isEmpty ? _category.name : noteText,
+            'title': noteText.isEmpty ? categoryName : noteText,
             'amount': amountValue,
             'date': _dateController.text,
-            'category': _category.name,
+            'category': categoryName,
           };
 
           if (widget.transactionId == null) {

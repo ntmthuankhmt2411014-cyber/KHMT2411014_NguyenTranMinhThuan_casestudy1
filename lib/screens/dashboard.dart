@@ -1,60 +1,13 @@
 import 'package:flutter/material.dart';
+
 import '../database/database_helper.dart';
 import '../models/transaction_form.dart';
+import '../utils/helpers.dart';
+import '../widgets/swipe_to_delete.dart';
 import 'add_transaction_screen.dart';
-
-/// Định dạng số có dấu chấm ngăn cách hàng nghìn, kiểu Việt Nam.
-/// Ví dụ: 8000000 -> "8.000.000"
-String formatNumber(num value) {
-  final absValue = value.abs().toInt();
-  final str = absValue.toString();
-  final buffer = StringBuffer();
-  for (int i = 0; i < str.length; i++) {
-    if (i != 0 && (str.length - i) % 3 == 0) buffer.write('.');
-    buffer.write(str[i]);
-  }
-  return buffer.toString();
-}
-
-/// Map tên danh mục (lưu dạng text trong database) sang icon hiển thị
-IconData iconForCategory(String category) {
-  switch (category) {
-    case 'Ăn uống':
-      return Icons.restaurant;
-    case 'Di chuyển':
-      return Icons.directions_car;
-    case 'Mua sắm':
-      return Icons.shopping_cart;
-    case 'Hóa đơn':
-      return Icons.receipt_long;
-    case 'Giáo dục':
-      return Icons.school;
-    case 'Thu nhập':
-      return Icons.attach_money;
-    default:
-      return Icons.category;
-  }
-}
-
-/// Map tên danh mục sang màu hiển thị
-Color colorForCategory(String category) {
-  switch (category) {
-    case 'Ăn uống':
-      return const Color(0xFFFF6D00);
-    case 'Di chuyển':
-      return const Color(0xFF2196F3);
-    case 'Mua sắm':
-      return const Color(0xFF9C27B0);
-    case 'Hóa đơn':
-      return const Color(0xFF795548);
-    case 'Giáo dục':
-      return const Color(0xFF009688);
-    case 'Thu nhập':
-      return const Color(0xFF2EAD4B);
-    default:
-      return Colors.grey;
-  }
-}
+import 'profile_screen.dart';
+import 'statistics_screen.dart';
+import 'transactions_screen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -75,8 +28,9 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final List<Widget> pages = [
       HomeContent(key: _homeContentKey),
-      const Center(child: Text('Giao dịch', style: TextStyle(fontSize: 24))),
-      const Center(child: Text('Thống kê', style: TextStyle(fontSize: 24))),
+      const TransactionsScreen(),
+      const StatisticsScreen(),
+      const ProfileScreen(),
     ];
 
     return Scaffold(
@@ -117,14 +71,19 @@ class _HomePageState extends State<HomePage> {
             label: 'Trang chủ',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long_outlined),
-            activeIcon: Icon(Icons.receipt_long),
+            icon: Icon(Icons.format_list_bulleted),
+            activeIcon: Icon(Icons.format_list_bulleted),
             label: 'Giao dịch',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.pie_chart_outline),
-            activeIcon: Icon(Icons.pie_chart),
+            icon: Icon(Icons.bar_chart_outlined),
+            activeIcon: Icon(Icons.bar_chart),
             label: 'Thống kê',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
+            label: 'Cá nhân',
           ),
         ],
       ),
@@ -157,6 +116,14 @@ class HomeContentState extends State<HomeContent> {
     setState(() {
       _transactions = data;
       _loading = false;
+    });
+  }
+
+  /// Gỡ giao dịch khỏi danh sách ngay lập tức (không chờ đọc lại database).
+  /// Bắt buộc phải làm đồng bộ, nếu không Dismissible sẽ báo lỗi.
+  void _removeTransactionLocally(int id) {
+    setState(() {
+      _transactions = _transactions.where((t) => t['id'] != id).toList();
     });
   }
 
@@ -195,6 +162,7 @@ class HomeContentState extends State<HomeContent> {
           TransactionList(
             transactions: _transactions,
             onChanged: reloadTransactions,
+            onDeleted: _removeTransactionLocally,
           ),
         ],
       ),
@@ -209,18 +177,12 @@ class Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        IconButton(
-          onPressed: () {},
-          icon: const Icon(Icons.menu, size: 32),
-        ),
+        IconButton(onPressed: () {}, icon: const Icon(Icons.menu, size: 32)),
         const SizedBox(width: 12),
         const Expanded(
           child: Text(
             'Quản lý thu chi',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
         ),
         Stack(
@@ -267,15 +229,12 @@ class BalanceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      height: 330,
+      height: 220,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF4D8CF7),
-            Color(0xFF1769E0),
-          ],
+          colors: [Color(0xFF4D8CF7), Color(0xFF1769E0)],
         ),
         borderRadius: BorderRadius.circular(28),
       ),
@@ -300,13 +259,16 @@ class BalanceCard extends StatelessWidget {
                     Icon(Icons.visibility, color: Colors.white, size: 28),
                   ],
                 ),
-                const SizedBox(height: 22),
-                Text(
-                  '${balance < 0 ? '-' : ''}${formatNumber(balance)} đ',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 44,
-                    fontWeight: FontWeight.bold,
+                const SizedBox(height: 28),
+                Padding(
+                  padding: const EdgeInsets.only(right: 90),
+                  child: Text(
+                    '${balance < 0 ? '-' : ''}${formatNumber(balance)} đ',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 const Spacer(),
@@ -334,17 +296,17 @@ class BalanceCard extends StatelessWidget {
           ),
           Positioned(
             right: 15,
-            bottom: 40,
+            top: 65,
             child: Container(
-              width: 130,
-              height: 130,
+              width: 100,
+              height: 100,
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(30),
               ),
               child: const Icon(
                 Icons.account_balance_wallet,
-                size: 100,
+                size: 75,
                 color: Colors.white,
               ),
             ),
@@ -469,10 +431,7 @@ class TransactionHeader extends StatelessWidget {
       children: [
         const Text(
           'Giao dịch gần đây',
-          style: TextStyle(
-            fontSize: 25,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
         ),
         const Spacer(),
         TextButton(
@@ -495,11 +454,13 @@ class TransactionHeader extends StatelessWidget {
 class TransactionList extends StatelessWidget {
   final List<Map<String, dynamic>> transactions;
   final VoidCallback onChanged;
+  final void Function(int id) onDeleted;
 
   const TransactionList({
     super.key,
     required this.transactions,
     required this.onChanged,
+    required this.onDeleted,
   });
 
   @override
@@ -522,6 +483,7 @@ class TransactionList extends StatelessWidget {
     }
 
     return Container(
+      clipBehavior: Clip.antiAlias, // để nền đỏ khi vuốt không tràn ra góc bo
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -532,16 +494,14 @@ class TransactionList extends StatelessWidget {
         physics: const NeverScrollableScrollPhysics(),
         itemCount: transactions.length,
         separatorBuilder: (context, index) {
-          return const Divider(
-            height: 1,
-            indent: 20,
-            endIndent: 20,
-          );
+          return const Divider(height: 1, indent: 20, endIndent: 20);
         },
         itemBuilder: (context, index) {
+          final item = transactions[index];
           return TransactionItem(
-            transaction: transactions[index],
+            transaction: item,
             onChanged: onChanged,
+            onDeleted: () => onDeleted(item['id'] as int),
           );
         },
       ),
@@ -552,11 +512,13 @@ class TransactionList extends StatelessWidget {
 class TransactionItem extends StatelessWidget {
   final Map<String, dynamic> transaction;
   final VoidCallback onChanged;
+  final VoidCallback onDeleted;
 
   const TransactionItem({
     super.key,
     required this.transaction,
     required this.onChanged,
+    required this.onDeleted,
   });
 
   @override
@@ -567,7 +529,7 @@ class TransactionItem extends StatelessWidget {
     final String title = transaction['title'] as String;
     final String date = transaction['date'] as String;
 
-    return InkWell(
+    final tile = InkWell(
       onTap: () async {
         final result = await Navigator.push(
           context,
@@ -575,8 +537,9 @@ class TransactionItem extends StatelessWidget {
             builder: (context) => TransactionFormScreen(
               title: 'Sửa giao dịch',
               transactionId: transaction['id'] as int,
-              initialType:
-              isIncome ? TransactionType.income : TransactionType.expense,
+              initialType: isIncome
+                  ? TransactionType.income
+                  : TransactionType.expense,
               initialCategory: categories.firstWhere(
                     (c) => c.name == categoryName,
                 orElse: () => categories.first,
@@ -593,10 +556,7 @@ class TransactionItem extends StatelessWidget {
         }
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 20,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
         child: Row(
           children: [
             CircleAvatar(
@@ -660,6 +620,12 @@ class TransactionItem extends StatelessWidget {
           ],
         ),
       ),
+    );
+    return SwipeToDelete(
+      transactionId: transaction['id'] as int,
+      title: title,
+      onDeleted: onDeleted,
+      child: tile,
     );
   }
 }
